@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forest Timer</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lato:wght@300;400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --moss: #3d5a3e; --fern: #5a7d4a; --bark: #4a3728;
+    --canopy: #1a2e1b; --mist: #d4e8c2; --sunbeam: #f0e8a0;
+    --dew: #a8c9a0; --shadow: #0d1a0e;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background-color: var(--canopy);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Lato', sans-serif;
+    overflow: hidden;
+    position: relative;
+  }
+  .forest-bg {
+    position: fixed; inset: 0; z-index: 0;
+    background:
+      radial-gradient(ellipse 60% 40% at 50% 0%, rgba(90,125,74,0.35) 0%, transparent 70%),
+      radial-gradient(ellipse 80% 60% at 20% 100%, rgba(26,46,27,0.8) 0%, transparent 60%),
+      radial-gradient(ellipse 80% 60% at 80% 100%, rgba(26,46,27,0.8) 0%, transparent 60%);
+    background-color: #0d1a0e;
+  }
+  .rays { position:fixed; inset:0; z-index:0; overflow:hidden; }
+  .ray {
+    position:absolute; top:-10%; width:2px; height:100%;
+    background: linear-gradient(to bottom, rgba(240,232,160,0.13), transparent);
+    transform-origin: top center;
+    animation: sway 8s ease-in-out infinite;
+  }
+  .ray:nth-child(1){left:20%;--r:-8deg;animation-delay:0s;}
+  .ray:nth-child(2){left:35%;--r:-3deg;animation-delay:1.5s;width:3px;opacity:0.7;}
+  .ray:nth-child(3){left:50%;--r:2deg;animation-delay:3s;}
+  .ray:nth-child(4){left:65%;--r:6deg;animation-delay:0.8s;width:3px;opacity:0.8;}
+  .ray:nth-child(5){left:78%;--r:10deg;animation-delay:2s;}
+  @keyframes sway {
+    0%,100%{transform:rotate(var(--r,-5deg));opacity:0.6;}
+    50%{transform:rotate(calc(var(--r,-5deg) + 3deg));opacity:1;}
+  }
+  #canopyCanvas { position:fixed; inset:0; z-index:2; pointer-events:none; }
+  .trees { position:fixed; bottom:0; left:0; right:0; height:200px; z-index:1; }
+
+  /* ── Main UI ── */
+  .container {
+    position:relative; z-index:10;
+    text-align:center; padding:1.8rem 3rem 2.2rem;
+    display:flex; flex-direction:column; align-items:center;
+  }
+  .title {
+    font-family:'Playfair Display',serif; font-size:0.82rem;
+    letter-spacing:0.45em; color:var(--dew); text-transform:uppercase;
+    margin-bottom:1.2rem; opacity:0.75;
+  }
+  #oakCanvas { display:block; margin:0 auto 1.2rem; border-radius:10px; }
+
+  .time-row { margin-bottom:1.2rem; }
+  .time-display {
+    font-family:'Playfair Display',serif; font-size:3rem; font-weight:700;
+    color:var(--mist); letter-spacing:0.05em;
+    text-shadow:0 0 30px rgba(212,232,194,0.4); line-height:1;
+    transition:color 0.5s ease;
+  }
+  .time-display.ending {
+    color:var(--sunbeam);
+    text-shadow:0 0 30px rgba(240,232,160,0.6);
+    animation:pulse 1s ease-in-out infinite;
+  }
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.65;}}
+  .status-label {
+    font-size:0.6rem; letter-spacing:0.3em; color:var(--dew);
+    opacity:0.55; text-transform:uppercase; margin-top:0.3rem;
+  }
+
+  /* Oak grown momentary overlay */
+  .grown-banner {
+    position:fixed; inset:0; z-index:20;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    pointer-events:none; opacity:0; transition:opacity 1.4s ease;
+    background: radial-gradient(ellipse 60% 50% at 50% 50%, rgba(10,30,10,0.7), transparent);
+  }
+  .grown-banner.show{ opacity:1; }
+  .grown-banner .bloom-text {
+    font-family:'Playfair Display',serif; font-style:italic; font-size:2.2rem;
+    color:var(--sunbeam); letter-spacing:0.12em; margin-top:1rem;
+    text-shadow:0 0 50px rgba(240,232,160,0.8), 0 2px 8px rgba(0,0,0,0.8);
+  }
+  .grown-banner .sub-text {
+    font-size:0.7rem; letter-spacing:0.35em; color:var(--dew);
+    opacity:0.8; margin-top:0.5rem; text-transform:uppercase;
+  }
+
+  /* ── Meditation Screen ── */
+  .meditation-screen {
+    position:fixed; inset:0; z-index:30;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    pointer-events:none; opacity:0;
+    transition:opacity 1.6s ease;
+    background: radial-gradient(ellipse 80% 70% at 50% 50%, rgba(5,18,6,0.96), rgba(10,25,10,0.99));
+  }
+  .meditation-screen.show{ opacity:1; pointer-events:all; }
+
+  .med-title {
+    font-family:'Playfair Display',serif; font-style:italic;
+    font-size:1.1rem; letter-spacing:0.3em; color:var(--dew);
+    opacity:0.7; text-transform:lowercase; margin-bottom:2.5rem;
+  }
+
+  /* Breathing orb */
+  .orb-wrap {
+    position:relative; width:160px; height:160px;
+    display:flex; align-items:center; justify-content:center;
+    margin-bottom:2rem;
+  }
+  .orb-ring {
+    position:absolute; inset:0; border-radius:50%;
+    border:1px solid rgba(168,201,160,0.2);
+    animation:orbRingPulse 4s ease-in-out infinite;
+  }
+  .orb-ring:nth-child(2){ inset:-12px; animation-delay:0.4s; opacity:0.5; }
+  .orb-ring:nth-child(3){ inset:-24px; animation-delay:0.8s; opacity:0.25; }
+  @keyframes orbRingPulse{
+    0%,100%{transform:scale(1);opacity:var(--rop,0.2);}
+    50%{transform:scale(1.06);opacity:calc(var(--rop,0.2)*2);}
+  }
+  .orb {
+    width:80px; height:80px; border-radius:50%;
+    background: radial-gradient(circle at 38% 35%, rgba(168,201,160,0.9), rgba(61,90,62,0.6));
+    box-shadow: 0 0 40px rgba(168,201,160,0.4), 0 0 80px rgba(90,125,74,0.2);
+    transition: transform 0.1s linear, box-shadow 0.1s linear;
+  }
+
+  .breath-label {
+    font-family:'Playfair Display',serif; font-style:italic;
+    font-size:1.5rem; color:var(--mist);
+    letter-spacing:0.08em; margin-bottom:0.6rem;
+    min-height:2rem;
+    text-shadow: 0 0 20px rgba(212,232,194,0.5);
+    transition:opacity 0.4s ease;
+  }
+  .breath-sublabel {
+    font-size:0.6rem; letter-spacing:0.35em; color:var(--dew);
+    opacity:0.5; text-transform:uppercase; margin-bottom:2.5rem;
+    min-height:1rem;
+  }
+
+  /* Breath progress arc */
+  .breath-arc-wrap {
+    position:absolute; inset:-30px; pointer-events:none;
+  }
+  .breath-arc {
+    fill:none; stroke:rgba(168,201,160,0.55); stroke-width:1.5;
+    stroke-linecap:round;
+    stroke-dasharray:408; stroke-dashoffset:408;
+    transition:stroke-dashoffset 0.25s linear;
+  }
+
+  /* Countdown ring */
+  .med-countdown-wrap {
+    position:relative; width:56px; height:56px; margin-bottom:1.8rem;
+  }
+  .med-countdown-svg { position:absolute; inset:0; transform:rotate(-90deg); }
+  .med-ring-bg{ fill:none; stroke:rgba(61,90,62,0.35); stroke-width:3; }
+  .med-ring-prog{ fill:none; stroke:var(--dew); stroke-width:3; stroke-linecap:round;
+    stroke-dasharray:163; stroke-dashoffset:0; transition:stroke-dashoffset 1s linear; }
+  .med-countdown-num {
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-family:'Playfair Display',serif; font-size:1.1rem; color:var(--dew); opacity:0.8;
+  }
+
+  .med-skip {
+    font-size:0.6rem; letter-spacing:0.3em; color:var(--dew); opacity:0.35;
+    text-transform:uppercase; cursor:pointer; background:none; border:none;
+    transition:opacity 0.3s; padding:0.4rem 1rem;
+  }
+  .med-skip:hover{ opacity:0.7; }
+
+  .presets {
+    display:flex; gap:0.65rem; justify-content:center;
+    margin-bottom:1.2rem; flex-wrap:wrap;
+  }
+  .preset-btn {
+    background:rgba(61,90,62,0.3); border:1px solid rgba(90,125,74,0.5);
+    color:var(--dew); font-family:'Lato',sans-serif; font-size:0.7rem;
+    letter-spacing:0.15em; padding:0.4rem 0.85rem; border-radius:20px;
+    cursor:pointer; transition:all 0.3s; text-transform:uppercase;
+  }
+  .preset-btn:hover,.preset-btn.active{
+    background:rgba(90,125,74,0.5); border-color:var(--dew); color:var(--mist);
+    box-shadow:0 0 12px rgba(168,201,160,0.2);
+  }
+  .custom-input-row {
+    display:flex; gap:0.5rem; justify-content:center; align-items:center; margin-bottom:1.2rem;
+  }
+  .time-input {
+    width:64px; background:rgba(61,90,62,0.2); border:1px solid rgba(90,125,74,0.4);
+    color:var(--mist); font-family:'Playfair Display',serif; font-size:1.25rem;
+    text-align:center; padding:0.32rem; border-radius:8px; outline:none;
+    transition:border-color 0.3s;
+  }
+  .time-input:focus{ border-color:var(--dew); }
+  .time-sep{ color:var(--dew); font-size:1.25rem; font-family:'Playfair Display',serif; opacity:0.7; }
+  .controls{ display:flex; gap:1rem; justify-content:center; }
+  .btn {
+    width:50px; height:50px; border-radius:50%;
+    border:2px solid rgba(90,125,74,0.6); background:rgba(61,90,62,0.3);
+    color:var(--mist); cursor:pointer; display:flex; align-items:center; justify-content:center;
+    transition:all 0.3s; font-size:1.1rem;
+  }
+  .btn:hover{ background:rgba(90,125,74,0.5); border-color:var(--dew); transform:scale(1.08); box-shadow:0 0 18px rgba(168,201,160,0.3); }
+  .btn-play{ width:72px; height:64px; background:rgba(90,125,74,0.5); border-color:var(--mist); font-size:0.75rem; letter-spacing:0.18em; text-transform:uppercase; font-family:'Lato',sans-serif; box-shadow:0 0 22px rgba(168,201,160,0.2); }
+  .btn-play:hover{ background:rgba(90,125,74,0.8); box-shadow:0 0 32px rgba(168,201,160,0.4); }
+</style>
+</head>
+<body>
+<div class="forest-bg"></div>
+<div class="rays">
+  <div class="ray"></div><div class="ray"></div><div class="ray"></div>
+  <div class="ray"></div><div class="ray"></div>
+</div>
+<canvas id="canopyCanvas"></canvas>
+
+<div class="trees">
+  <svg width="100%" height="200" viewBox="0 0 1400 200" preserveAspectRatio="xMidYMax slice" xmlns="http://www.w3.org/2000/svg">
+    <g fill="#0a1509" opacity="0.9">
+      <polygon points="100,200 120,120 140,200"/><polygon points="110,200 125,100 140,200"/>
+      <polygon points="230,200 255,110 280,200"/><polygon points="240,200 258,90 276,200"/>
+      <polygon points="400,200 425,105 450,200"/><polygon points="410,200 428,85 446,200"/>
+      <polygon points="600,200 620,115 640,200"/>
+      <polygon points="750,200 775,100 800,200"/><polygon points="760,200 778,80 796,200"/>
+      <polygon points="920,200 945,108 970,200"/><polygon points="930,200 948,88 966,200"/>
+      <polygon points="1100,200 1125,112 1150,200"/>
+      <polygon points="1260,200 1280,118 1300,200"/><polygon points="1270,200 1283,95 1296,200"/>
+    </g>
+    <g fill="#111f10" opacity="1">
+      <polygon points="0,200 30,130 60,200"/><polygon points="5,200 32,105 59,200"/><rect x="26" y="165" width="12" height="35"/>
+      <polygon points="170,200 205,125 240,200"/><polygon points="180,200 208,100 236,200"/><rect x="201" y="162" width="14" height="38"/>
+      <polygon points="330,200 365,118 400,200"/><polygon points="340,200 368,95 396,200"/><rect x="361" y="158" width="14" height="42"/>
+      <polygon points="520,200 555,122 590,200"/><polygon points="530,200 558,98 586,200"/><rect x="551" y="160" width="14" height="40"/>
+      <polygon points="680,200 715,128 750,200"/><polygon points="690,200 718,102 746,200"/><rect x="711" y="163" width="14" height="37"/>
+      <polygon points="860,200 895,120 930,200"/><polygon points="870,200 898,96 926,200"/><rect x="891" y="158" width="14" height="42"/>
+      <polygon points="1020,200 1060,125 1100,200"/><polygon points="1030,200 1063,100 1096,200"/><rect x="1056" y="162" width="14" height="38"/>
+      <polygon points="1190,200 1225,118 1260,200"/><polygon points="1200,200 1228,94 1256,200"/><rect x="1221" y="158" width="14" height="42"/>
+      <polygon points="1350,200 1375,128 1400,200"/><polygon points="1355,200 1376,108 1397,200"/><rect x="1370" y="163" width="12" height="37"/>
+    </g>
+    <rect x="0" y="185" width="1400" height="20" fill="#0a1509" opacity="0.8"/>
+  </svg>
+</div>
+
+<div class="grown-banner" id="grownBanner">
+  <div class="bloom-text">One-Breath Meditation</div>
+</div>
+
+<!-- Meditation Screen -->
+<div class="meditation-screen" id="medScreen">
+  <div class="med-title">one-breath meditation</div>
+
+  <div class="orb-wrap" id="orbWrap">
+    <div class="orb-ring"></div>
+    <div class="orb-ring"></div>
+    <div class="orb-ring"></div>
+    <svg class="breath-arc-wrap" viewBox="0 0 220 220">
+      <circle class="breath-arc" id="breathArc" cx="110" cy="110" r="65"/>
+    </svg>
+    <div class="orb" id="breathOrb"></div>
+  </div>
+
+  <div class="breath-label" id="breathLabel">breathe in</div>
+  <div class="breath-sublabel" id="breathSublabel">follow the orb</div>
+
+  <div class="med-countdown-wrap">
+    <svg class="med-countdown-svg" viewBox="0 0 56 56">
+      <circle class="med-ring-bg" cx="28" cy="28" r="26"/>
+      <circle class="med-ring-prog" id="medRingProg" cx="28" cy="28" r="26"/>
+    </svg>
+    <div class="med-countdown-num" id="medCountNum">12</div>
+  </div>
+
+  <button class="med-skip" id="medSkipBtn" onclick="skipMeditation()">skip</button>
+</div>
+
+<div class="container">
+  <canvas id="oakCanvas" width="340" height="310"></canvas>
+  <div class="time-row">
+    <div class="time-display" id="display">25:00</div>
+    <div class="status-label" id="statusLabel">ready</div>
+  </div>
+  <div class="presets">
+    <button class="preset-btn active" onclick="setPreset(5,this)">5 min</button>
+    <button class="preset-btn" onclick="setPreset(10,this)">10 min</button>
+    <button class="preset-btn" onclick="setPreset(15,this)">15 min</button>
+    <button class="preset-btn" onclick="setPreset(20,this)">20 min</button>
+    <button class="preset-btn" onclick="setPreset(30,this)">30 min</button>
+    <button class="preset-btn" onclick="setPreset(60,this)">1 hour</button>
+  </div>
+  <div class="custom-input-row">
+    <input type="number" class="time-input" id="minInput" min="0" max="99" value="5" oninput="onCustomInput()"/>
+    <span class="time-sep">:</span>
+    <input type="number" class="time-input" id="secInput" min="0" max="59" value="00" oninput="onCustomInput()"/>
+  </div>
+  <div class="controls">
+    <button class="btn" onclick="resetTimer()" title="Reset">↺</button>
+    <button class="btn btn-play" id="playBtn" onclick="toggleTimer()">grow</button>
+    <button class="btn" onclick="addMinute()" title="+1 min">+1</button>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════
+//  FALLING CANOPY ITEMS
+// ════════════════════════════════════════════════
+const canvasFall = document.getElementById('canopyCanvas');
+const ctxF = canvasFall.getContext('2d');
+function resizeFall(){ canvasFall.width=window.innerWidth; canvasFall.height=window.innerHeight; }
+resizeFall(); window.addEventListener('resize',resizeFall);
+
+const LCOLS=['#5a7d4a','#4a6e3a','#7a9d5a','#3d5a3e','#8fbb6a','#a8c980','#c9b85a','#b07830','#d4a050','#e8c870'];
+const CCOLS=['#5a3e28','#6e4a30','#4a3020','#7a5038'];
+const OAK_LEAF_COLS=['#4a7a2e','#5a8c38','#3d6628','#6b9e40','#8abf55','#b8902a','#c8a030','#9e6e20','#d4a840','#7a5a20'];
+const fallItems=[];
+function fr(a,b){return a+Math.random()*(b-a);}
+function fi(a,b){return Math.floor(fr(a,b+1));}
+function mkLeaf(){const w=fr(10,22),h=fr(6,13);return{type:'leaf',x:fr(0,canvasFall.width),y:fr(-120,-10),vx:fr(-0.6,0.6),vy:fr(0.6,1.4),rot:fr(0,Math.PI*2),rotV:fr(-0.03,0.03),sp:fr(0,Math.PI*2),sa:fr(0.3,1),sf:fr(0.01,0.025),w,h,color:LCOLS[fi(0,LCOLS.length-1)],alpha:fr(0.55,0.95),life:1};}
+function mkNeedle(){const len=fr(18,40);return{type:'needle',x:fr(0,canvasFall.width),y:fr(-60,-5),vx:fr(-0.3,0.3),vy:fr(0.5,1.1),rot:fr(0,Math.PI*2),rotV:fr(-0.015,0.015),sp:fr(0,Math.PI*2),sa:fr(0.2,0.7),sf:fr(0.008,0.02),len,alpha:fr(0.4,0.8),life:1};}
+function mkCluster(){return{type:'cluster',x:fr(0,canvasFall.width),y:fr(-60,-5),vx:fr(-0.3,0.3),vy:fr(0.5,1.1),rot:fr(0,Math.PI*2),rotV:fr(-0.012,0.012),sp:fr(0,Math.PI*2),sa:fr(0.2,0.6),sf:fr(0.01,0.022),count:fi(2,4),len:fr(14,28),alpha:fr(0.45,0.8),life:1};}
+function mkCone(){return{type:'cone',x:fr(0,canvasFall.width),y:fr(-30,-5),vx:fr(-0.2,0.2),vy:fr(1.0,2.0),rot:fr(0,Math.PI*2),rotV:fr(-0.02,0.02),sp:fr(0,Math.PI*2),sa:fr(0.1,0.4),sf:fr(0.008,0.018),scale:fr(0.6,1.1),color:CCOLS[fi(0,CCOLS.length-1)],alpha:fr(0.55,0.85),life:1};}
+function mkOakLeaf(){const s=fr(0.7,1.4);return{type:'oakleaf',x:fr(0,canvasFall.width),y:fr(-100,-10),vx:fr(-0.5,0.5),vy:fr(0.5,1.3),rot:fr(0,Math.PI*2),rotV:fr(-0.025,0.025),sp:fr(0,Math.PI*2),sa:fr(0.4,1.1),sf:fr(0.009,0.022),scale:s,color:OAK_LEAF_COLS[fi(0,OAK_LEAF_COLS.length-1)],alpha:fr(0.6,0.95),life:1};}
+function mkAcorn(){return{type:'acorn',x:fr(0,canvasFall.width),y:fr(-40,-5),vx:fr(-0.25,0.25),vy:fr(1.1,2.2),rot:fr(0,Math.PI*2),rotV:fr(-0.03,0.03),sp:fr(0,Math.PI*2),sa:fr(0.05,0.25),sf:fr(0.008,0.018),scale:fr(0.8,1.3),alpha:fr(0.65,0.9),life:1};}
+
+// Oak leaf: lobed silhouette path (unit size, scaled at draw time)
+function oakLeafPath(ctx){
+  // A simple hand-crafted lobed oak leaf outline, normalised ~±1 unit
+  ctx.beginPath();
+  ctx.moveTo(0,-1);
+  ctx.bezierCurveTo( 0.18,-0.82,  0.42,-0.78,  0.38,-0.55);
+  ctx.bezierCurveTo( 0.55,-0.52,  0.62,-0.38,  0.48,-0.28);
+  ctx.bezierCurveTo( 0.65,-0.22,  0.70,-0.06,  0.52, 0.04);
+  ctx.bezierCurveTo( 0.68, 0.12,  0.68, 0.30,  0.48, 0.36);
+  ctx.bezierCurveTo( 0.55, 0.52,  0.42, 0.62,  0.22, 0.58);
+  ctx.bezierCurveTo( 0.18, 0.78,  0.08, 0.88,  0, 1);
+  ctx.bezierCurveTo(-0.08, 0.88, -0.18, 0.78, -0.22, 0.58);
+  ctx.bezierCurveTo(-0.42, 0.62, -0.55, 0.52, -0.48, 0.36);
+  ctx.bezierCurveTo(-0.68, 0.30, -0.68, 0.12, -0.52, 0.04);
+  ctx.bezierCurveTo(-0.70,-0.06, -0.65,-0.22, -0.48,-0.28);
+  ctx.bezierCurveTo(-0.62,-0.38, -0.55,-0.52, -0.38,-0.55);
+  ctx.bezierCurveTo(-0.42,-0.78, -0.18,-0.82,  0,-1);
+  ctx.closePath();
+}
+
+function dLeaf(it){ctxF.save();ctxF.translate(it.x,it.y);ctxF.rotate(it.rot);ctxF.globalAlpha=it.alpha*it.life;ctxF.fillStyle=it.color;ctxF.beginPath();ctxF.ellipse(0,0,it.w/2,it.h/2,0,0,Math.PI*2);ctxF.fill();ctxF.strokeStyle='rgba(0,0,0,0.15)';ctxF.lineWidth=0.8;ctxF.beginPath();ctxF.moveTo(-it.w/2+2,0);ctxF.lineTo(it.w/2-2,0);ctxF.stroke();ctxF.restore();}
+function dNeedle(it){ctxF.save();ctxF.translate(it.x,it.y);ctxF.rotate(it.rot);ctxF.globalAlpha=it.alpha*it.life;ctxF.strokeStyle='#3d5a2e';ctxF.lineWidth=1;ctxF.beginPath();ctxF.moveTo(-it.len/2,0);ctxF.lineTo(it.len/2,0);ctxF.stroke();ctxF.restore();}
+function dCluster(it){ctxF.save();ctxF.translate(it.x,it.y);ctxF.rotate(it.rot);ctxF.globalAlpha=it.alpha*it.life;ctxF.strokeStyle='#3d5a2e';ctxF.lineWidth=1;const sp=Math.PI/(it.count+1);for(let i=0;i<it.count;i++){const a=-Math.PI/2+sp*(i+1);ctxF.beginPath();ctxF.moveTo(0,0);ctxF.lineTo(Math.cos(a)*it.len,Math.sin(a)*it.len);ctxF.stroke();}ctxF.restore();}
+function dCone(it){ctxF.save();ctxF.translate(it.x,it.y);ctxF.rotate(it.rot);ctxF.scale(it.scale,it.scale);ctxF.globalAlpha=it.alpha*it.life;ctxF.fillStyle=it.color;ctxF.beginPath();ctxF.ellipse(0,0,3.5,8,0,0,Math.PI*2);ctxF.fill();ctxF.strokeStyle='rgba(0,0,0,0.25)';ctxF.lineWidth=0.7;for(let i=-1;i<=1;i++){ctxF.beginPath();ctxF.arc(0,i*5,3,0,Math.PI);ctxF.stroke();}ctxF.restore();}
+
+function dOakLeaf(it){
+  ctxF.save();
+  ctxF.translate(it.x,it.y);
+  ctxF.rotate(it.rot);
+  ctxF.scale(it.scale*13, it.scale*16);
+  ctxF.globalAlpha=it.alpha*it.life;
+  ctxF.fillStyle=it.color;
+  oakLeafPath(ctxF);
+  ctxF.fill();
+  // Midrib vein
+  ctxF.strokeStyle='rgba(0,0,0,0.18)';
+  ctxF.lineWidth=0.06;
+  ctxF.beginPath(); ctxF.moveTo(0,-0.9); ctxF.lineTo(0,0.9); ctxF.stroke();
+  ctxF.restore();
+}
+
+function dAcorn(it){
+  ctxF.save();
+  ctxF.translate(it.x,it.y);
+  ctxF.rotate(it.rot);
+  ctxF.scale(it.scale,it.scale);
+  ctxF.globalAlpha=it.alpha*it.life;
+
+  // Nut body — warm tan/brown oval
+  ctxF.fillStyle='#b8864a';
+  ctxF.beginPath();
+  ctxF.ellipse(0, 3, 5, 7, 0, 0, Math.PI*2);
+  ctxF.fill();
+  // Nut sheen
+  ctxF.fillStyle='rgba(255,220,150,0.18)';
+  ctxF.beginPath(); ctxF.ellipse(-1.5,1,2,3,0.4,0,Math.PI*2); ctxF.fill();
+
+  // Cap — textured dark brown dome
+  ctxF.fillStyle='#5a3a18';
+  ctxF.beginPath();
+  ctxF.ellipse(0,-2,5.5,4,0,0,Math.PI*2);
+  ctxF.fill();
+  // Cap texture lines
+  ctxF.strokeStyle='rgba(0,0,0,0.22)';
+  ctxF.lineWidth=0.7;
+  for(let i=-2;i<=2;i++){
+    ctxF.beginPath();
+    ctxF.moveTo(i*1.6-1,-4);
+    ctxF.quadraticCurveTo(i*1.8,-1.5, i*1.5,0.5);
+    ctxF.stroke();
+  }
+
+  // Stem
+  ctxF.strokeStyle='#4a3218';
+  ctxF.lineWidth=1.2;
+  ctxF.lineCap='round';
+  ctxF.beginPath(); ctxF.moveTo(0,-5.5); ctxF.lineTo(0,-7.5); ctxF.stroke();
+
+  ctxF.restore();
+}
+
+function spawnF(){
+  const r=Math.random();
+  if     (r<0.22) fallItems.push(mkOakLeaf());   // oak leaves — most common
+  else if(r<0.38) fallItems.push(mkLeaf());       // generic leaves
+  else if(r<0.52) fallItems.push(mkAcorn());      // acorns
+  else if(r<0.68) fallItems.push(mkNeedle());
+  else if(r<0.82) fallItems.push(mkCluster());
+  else            fallItems.push(mkCone());
+}
+let lastSpawnF=0;
+for(let i=0;i<14;i++){spawnF();if(fallItems.length)fallItems[fallItems.length-1].y=fr(-canvasFall.height*0.9,canvasFall.height*0.9);}
+function animFall(ts){
+  ctxF.clearRect(0,0,canvasFall.width,canvasFall.height);
+  if(ts-lastSpawnF>1800){spawnF();lastSpawnF=ts;}
+  for(let i=fallItems.length-1;i>=0;i--){
+    const it=fallItems[i];
+    it.x+=it.vx+Math.sin(it.sp)*it.sa; it.y+=it.vy; it.rot+=it.rotV; it.sp+=it.sf;
+    const fd=canvasFall.height*0.12;
+    if(it.y>canvasFall.height-fd)it.life=Math.max(0,1-(it.y-(canvasFall.height-fd))/fd);
+    if(it.y>canvasFall.height+30||it.life<=0){fallItems.splice(i,1);continue;}
+    switch(it.type){
+      case'leaf':    dLeaf(it);    break;
+      case'needle':  dNeedle(it);  break;
+      case'cluster': dCluster(it); break;
+      case'cone':    dCone(it);    break;
+      case'oakleaf': dOakLeaf(it); break;
+      case'acorn':   dAcorn(it);   break;
+    }
+  }
+  requestAnimationFrame(animFall);
+}
+requestAnimationFrame(animFall);
+
+
+// ════════════════════════════════════════════════
+//  OAK TREE — fractal L-system style
+// ════════════════════════════════════════════════
+const oakC = document.getElementById('oakCanvas');
+const oc = oakC.getContext('2d');
+const OW=oakC.width, OH=oakC.height;
+
+// Seeded PRNG for reproducible tree
+let _seed=42;
+function sr(){_seed=(_seed*1664525+1013904223)>>>0;return _seed/4294967296;}
+
+// ── Build all branch segments upfront ──
+const BRANCHES=[], LEAVES=[];
+
+// progress 0..1 at which a branch first appears — trunk=0, outermost twigs=1
+function buildOak(x,y,ang,len,depth,phase){
+  if(depth<1||len<2) return;
+  const ex=x+Math.cos(ang)*len, ey=y+Math.sin(ang)*len;
+
+  BRANCHES.push({x1:x,y1:y,x2:ex,y2:ey,
+    thick: Math.max(0.6, depth*1.9),
+    dark: depth>6, phase});
+
+  const childPhase = Math.min(1, phase + 0.055 + sr()*0.045);
+  if(depth>1){
+    // Wider spread for a sprawling oak silhouette
+    const spread = 0.42 + sr()*0.32;
+    const shrink  = 0.62 + sr()*0.12;
+
+    // Always two main children
+    buildOak(ex,ey, ang - spread - (sr()-0.5)*0.18, len*shrink,          depth-1, childPhase);
+    buildOak(ex,ey, ang + spread + (sr()-0.5)*0.18, len*shrink,          depth-1, childPhase + (sr()-0.5)*0.03);
+
+    // Extra mid branch — more frequent and at deeper levels for density
+    if(depth>=3 && sr()>0.28)
+      buildOak(ex,ey, ang + (sr()-0.5)*0.4,          len*shrink*0.82,    depth-1, childPhase + 0.01 + sr()*0.02);
+
+    // Occasional extra lateral shoot on upper levels for really wide canopy
+    if(depth>=5 && sr()>0.55)
+      buildOak(ex,ey, ang - spread*1.5 - sr()*0.2,   len*shrink*0.72,    depth-2, childPhase + 0.03);
+    if(depth>=5 && sr()>0.55)
+      buildOak(ex,ey, ang + spread*1.5 + sr()*0.2,   len*shrink*0.72,    depth-2, childPhase + 0.03);
+  }
+
+  // Leaf blobs — bigger spread, more blobs, on deeper levels too
+  if(depth<=3){
+    const count = depth===1 ? 9 : depth===2 ? 5 : 3;
+    const spread = depth===1 ? 44 : depth===2 ? 34 : 22;
+    const maxR   = depth===1 ? 30 : depth===2 ? 24 : 16;
+    for(let i=0;i<count;i++){
+      LEAVES.push({
+        x:  ex + (sr()-0.5)*spread,
+        y:  ey + (sr()-0.5)*spread,
+        rx: 14 + sr()*maxR,
+        ry: 11 + sr()*(maxR*0.8),
+        rot:(sr()-0.5)*1.4,
+        phase: Math.min(1, childPhase + 0.03 + sr()*0.04),
+        hue: 100 + sr()*45,
+      });
+    }
+  }
+}
+
+buildOak(OW/2, OH+10, -Math.PI/2, 78, 10, 0);
+
+// normalise phases so max == 1
+const maxPh = Math.max(...BRANCHES.map(b=>b.phase), ...LEAVES.map(l=>l.phase));
+BRANCHES.forEach(b=>b.phase/=maxPh);
+LEAVES.forEach(l=>{ l.phase/=maxPh; l.phase=Math.min(1,l.phase); });
+BRANCHES.sort((a,b)=>a.phase-b.phase);
+LEAVES.sort((a,b)=>a.phase-b.phase);
+
+let glowT=0; // driven from RAF
+
+function leafCol(hue, p, alpha){
+  // Leaves start deep forest green; near completion they warm to golden-green
+  const shift = p>0.8 ? (p-0.8)/0.2*30 : 0;
+  const h=hue-shift, s=55+p*10, l=28+p*18;
+  return `hsla(${h},${s}%,${l}%,${alpha})`;
+}
+
+function drawOak(progress){
+  oc.clearRect(0,0,OW,OH);
+
+  // Clip to canvas so nothing renders below bottom edge
+  oc.save();
+  oc.beginPath(); oc.rect(0,0,OW,OH); oc.clip();
+
+  // Ground glow
+  const gg=oc.createRadialGradient(OW/2,OH,2,OW/2,OH,55+progress*35);
+  gg.addColorStop(0,`rgba(40,80,30,${0.25+progress*0.35})`);
+  gg.addColorStop(1,'rgba(0,0,0,0)');
+  oc.fillStyle=gg; oc.beginPath();
+  oc.ellipse(OW/2,OH,55+progress*35,13,0,0,Math.PI*2); oc.fill();
+
+  // Background canopy glow when near full
+  if(progress>0.8){
+    const gp=(progress-0.8)/0.2;
+    const bg=oc.createRadialGradient(OW/2,OH*0.28,10,OW/2,OH*0.28,120);
+    bg.addColorStop(0,`rgba(80,150,50,${gp*0.14+Math.sin(glowT)*0.03})`);
+    bg.addColorStop(1,'transparent');
+    oc.fillStyle=bg; oc.fillRect(0,0,OW,OH);
+  }
+
+  // Branches
+  for(const b of BRANCHES){
+    if(b.phase>progress) break;
+    const lp=Math.min(1,(progress-b.phase)/0.07);
+    const ex=b.x1+(b.x2-b.x1)*lp, ey=b.y1+(b.y2-b.y1)*lp;
+    oc.save();
+    oc.strokeStyle=b.dark?'#4a3020':'#7a5030';
+    oc.lineWidth=b.thick; oc.lineCap='round';
+    oc.beginPath(); oc.moveTo(b.x1,b.y1); oc.lineTo(ex,ey); oc.stroke();
+    oc.restore();
+  }
+
+  // Leaf clusters
+  for(const lc of LEAVES){
+    if(lc.phase>progress) break;
+    const lp=Math.min(1,(progress-lc.phase)/0.1);
+    if(lp<0.01) continue;
+    oc.save();
+    oc.translate(lc.x,lc.y); oc.rotate(lc.rot);
+    const g=oc.createRadialGradient(0,0,0,0,0,lc.rx*lp);
+    g.addColorStop(0,leafCol(lc.hue,progress,0.78*lp));
+    g.addColorStop(0.55,leafCol(lc.hue-8,progress,0.45*lp));
+    g.addColorStop(1,'rgba(0,0,0,0)');
+    oc.fillStyle=g;
+    oc.beginPath();
+    oc.ellipse(0,0,lc.rx*lp,lc.ry*lp,0,0,Math.PI*2);
+    oc.fill();
+    oc.restore();
+  }
+
+  // Full-bloom sunbeam shimmer
+  if(progress>=1){
+    const pulse=0.12+Math.sin(glowT*1.4)*0.07;
+    const sh=oc.createRadialGradient(OW/2,OH*0.25,0,OW/2,OH*0.25,90);
+    sh.addColorStop(0,`rgba(240,232,100,${pulse})`);
+    sh.addColorStop(1,'transparent');
+    oc.fillStyle=sh; oc.fillRect(0,0,OW,OH);
+  }
+
+  oc.restore(); // end clip
+}
+
+
+// ════════════════════════════════════════════════
+//  TIMER LOGIC
+// ════════════════════════════════════════════════
+let totalSeconds=5*60, remaining=5*60;
+let running=false, timerInterval=null, isFinished=false;
+
+const displayEl=document.getElementById('display');
+const playBtn=document.getElementById('playBtn');
+const statusLabel=document.getElementById('statusLabel');
+const grownBanner=document.getElementById('grownBanner');
+const medScreen=document.getElementById('medScreen');
+const minInput=document.getElementById('minInput');
+const secInput=document.getElementById('secInput');
+
+function fmtTime(s){const m=Math.floor(s/60),sec=s%60;return`${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;}
+function timerProg(){ if(totalSeconds<=0)return 1; return Math.max(0,Math.min(1,1-remaining/totalSeconds)); }
+
+function updateDisplay(){
+  displayEl.textContent=fmtTime(remaining);
+  const ending=remaining<=10&&remaining>0;
+  displayEl.classList.toggle('ending',ending);
+  drawOak(timerProg());
+}
+
+function toggleTimer(){
+  ensureAudio(); // unlock audio context on first interaction
+  if(isFinished) return;
+  running=!running;
+  if(running){
+    playBtn.textContent='⏸'; statusLabel.textContent='growing…';
+    timerInterval=setInterval(tick,1000);
+  } else {
+    playBtn.textContent='grow'; statusLabel.textContent='paused';
+    clearInterval(timerInterval);
+  }
+}
+
+let rustlingStarted = false;
+
+function tick(){
+  if(remaining<=0){finish();return;}
+  remaining--;
+  // Start rustling wind 3 seconds before time ends
+  if(remaining===3 && !rustlingStarted){
+    rustlingStarted = true;
+    playRustling();
+  }
+  updateDisplay();
+  if(remaining<=0) finish();
+}
+
+// ════════════════════════════════════════════════
+//  RUSTLING LEAF SOUND (Web Audio API — synthesized)
+// ════════════════════════════════════════════════
+let audioCtx = null;
+
+function ensureAudio(){
+  if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  if(audioCtx.state==='suspended') audioCtx.resume();
+}
+
+function playRustling(){
+  ensureAudio();
+  const ac = audioCtx;
+  const now = ac.currentTime;
+  const totalDur = 5.5; // seconds
+
+  // ── Layer 1: broad pink-noise wind swell ──
+  const bufLen = ac.sampleRate * totalDur;
+  const buf = ac.createBuffer(1, bufLen, ac.sampleRate);
+  const data = buf.getChannelData(0);
+  // Pink noise approximation (filtered white noise)
+  let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0;
+  for(let i=0;i<bufLen;i++){
+    const w = Math.random()*2-1;
+    b0=0.99886*b0+w*0.0555179; b1=0.99332*b1+w*0.0750759;
+    b2=0.96900*b2+w*0.1538520; b3=0.86650*b3+w*0.3104856;
+    b4=0.55000*b4+w*0.5329522; b5=-0.7616*b5-w*0.0168980;
+    data[i]=(b0+b1+b2+b3+b4+b5+b6+w*0.5362)*0.11;
+    b6=w*0.115926;
+  }
+  const noise1 = ac.createBufferSource();
+  noise1.buffer = buf;
+
+  // Band-pass centred on leaf-rustle frequency range ~800–3kHz
+  const bp1 = ac.createBiquadFilter();
+  bp1.type='bandpass'; bp1.frequency.value=1400; bp1.Q.value=0.6;
+  const bp2 = ac.createBiquadFilter();
+  bp2.type='bandpass'; bp2.frequency.value=2800; bp2.Q.value=0.8;
+  const hp = ac.createBiquadFilter();
+  hp.type='highpass'; hp.frequency.value=600;
+
+  // Gain envelope: soft fade in → swell → gentle fade out
+  const gain1 = ac.createGain();
+  gain1.gain.setValueAtTime(0, now);
+  gain1.gain.linearRampToValueAtTime(0.55, now+0.9);
+  gain1.gain.linearRampToValueAtTime(0.7,  now+1.8);
+  gain1.gain.linearRampToValueAtTime(0.5,  now+3.2);
+  gain1.gain.linearRampToValueAtTime(0.3,  now+4.2);
+  gain1.gain.linearRampToValueAtTime(0,    now+totalDur);
+
+  noise1.connect(bp1); bp1.connect(bp2); bp2.connect(hp); hp.connect(gain1); gain1.connect(ac.destination);
+  noise1.start(now); noise1.stop(now+totalDur);
+
+  // ── Layer 2: higher shimmer — individual leaf flickers ──
+  const buf2 = ac.createBuffer(1, bufLen, ac.sampleRate);
+  const d2 = buf2.getChannelData(0);
+  let c0=0,c1=0;
+  for(let i=0;i<bufLen;i++){
+    const w=Math.random()*2-1;
+    c0=0.98*c0+w*0.14; c1=0.97*c1+w*0.18;
+    d2[i]=(c0+c1)*0.35;
+  }
+  const noise2 = ac.createBufferSource();
+  noise2.buffer = buf2;
+
+  const bp3 = ac.createBiquadFilter();
+  bp3.type='bandpass'; bp3.frequency.value=4200; bp3.Q.value=1.2;
+  const bp4 = ac.createBiquadFilter();
+  bp4.type='bandpass'; bp4.frequency.value=6000; bp4.Q.value=1.5;
+
+  const gain2 = ac.createGain();
+  gain2.gain.setValueAtTime(0, now);
+  gain2.gain.linearRampToValueAtTime(0.18, now+1.2);
+  gain2.gain.linearRampToValueAtTime(0.28, now+2.0);
+  gain2.gain.linearRampToValueAtTime(0.18, now+3.5);
+  gain2.gain.linearRampToValueAtTime(0,    now+totalDur);
+
+  noise2.connect(bp3); bp3.connect(bp4); bp4.connect(gain2); gain2.connect(ac.destination);
+  noise2.start(now); noise2.stop(now+totalDur);
+
+  // ── Layer 3: low whoosh undertone for depth ──
+  const buf3 = ac.createBuffer(1, bufLen, ac.sampleRate);
+  const d3 = buf3.getChannelData(0);
+  for(let i=0;i<bufLen;i++) d3[i]=Math.random()*2-1;
+  const noise3 = ac.createBufferSource();
+  noise3.buffer = buf3;
+
+  const lp = ac.createBiquadFilter();
+  lp.type='lowpass'; lp.frequency.value=320; lp.Q.value=0.5;
+
+  const gain3 = ac.createGain();
+  gain3.gain.setValueAtTime(0, now);
+  gain3.gain.linearRampToValueAtTime(0.12, now+1.5);
+  gain3.gain.linearRampToValueAtTime(0.08, now+3.8);
+  gain3.gain.linearRampToValueAtTime(0,    now+totalDur);
+
+  noise3.connect(lp); lp.connect(gain3); gain3.connect(ac.destination);
+  noise3.start(now); noise3.stop(now+totalDur);
+}
+
+function finish(){
+  clearInterval(timerInterval);
+  running=false; isFinished=true;
+  playBtn.textContent='grow'; statusLabel.textContent='full grown';
+  displayEl.classList.remove('ending');
+  drawOak(1);
+  // If rustling already started 3s ago, only ~2.5s of wind remains; otherwise play now (full 5.5s)
+  const wasEarly = rustlingStarted;
+  if(!rustlingStarted){ rustlingStarted=true; playRustling(); }
+  const windRemaining = wasEarly ? 2600 : 5600;
+  grownBanner.classList.add('show');
+  setTimeout(()=>{
+    grownBanner.classList.remove('show');
+    startMeditation();
+    rustlingStarted = false;
+  }, windRemaining);
+}
+
+function resetTimer(){
+  clearInterval(timerInterval);
+  stopMeditation();
+  rustlingStarted = false;
+  running=false; isFinished=false;
+  playBtn.textContent='grow'; statusLabel.textContent='ready';
+  displayEl.classList.remove('ending');
+  grownBanner.classList.remove('show');
+  medScreen.classList.remove('show');
+  remaining=totalSeconds;
+  updateDisplay();
+}
+
+function setPreset(mins,btn){
+  document.querySelectorAll('.preset-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  totalSeconds=mins*60; minInput.value=String(mins).padStart(2,'0'); secInput.value='00';
+  remaining=totalSeconds; resetTimer();
+}
+
+function onCustomInput(){
+  document.querySelectorAll('.preset-btn').forEach(b=>b.classList.remove('active'));
+  const m=parseInt(minInput.value)||0, s=parseInt(secInput.value)||0;
+  totalSeconds=m*60+s; remaining=totalSeconds; resetTimer();
+}
+
+function addMinute(){
+  totalSeconds+=60; remaining+=60;
+  isFinished=false;
+  grownBanner.classList.remove('show');
+  medScreen.classList.remove('show');
+  updateDisplay();
+}
+
+// RAF loop for glow pulse + oak redraw
+function oakLoop(ts){
+  glowT=ts*0.002;
+  if(isFinished||running) drawOak(timerProg());
+  requestAnimationFrame(oakLoop);
+}
+requestAnimationFrame(oakLoop);
+updateDisplay();
+
+
+// ════════════════════════════════════════════════
+//  MEDITATION BREAK
+// ════════════════════════════════════════════════
+const MED_TOTAL = 12; // seconds
+// 4s in, 2s hold, 6s out = 12s
+const BREATH_PHASES = [
+  { label:'breathe in',  dur:4,  dir:'in'   },
+  { label:'hold',        dur:2,  dir:'hold' },
+  { label:'breathe out', dur:6,  dir:'out'  },
+];
+const BREATH_CYCLE = BREATH_PHASES.reduce((a,p)=>a+p.dur,0); // 12s
+
+const breathOrb      = document.getElementById('breathOrb');
+const breathLabel    = document.getElementById('breathLabel');
+const breathSublabel = document.getElementById('breathSublabel');
+const breathArc      = document.getElementById('breathArc');
+const medRingProg    = document.getElementById('medRingProg');
+const medCountNum    = document.getElementById('medCountNum');
+const BREATH_ARC_TOTAL = 408;
+const MED_RING_TOTAL   = 163;
+
+let medRunning=false, medRemaining=MED_TOTAL;
+let medInterval=null, medRAF=null;
+let medStartTs=null, medElapsed=0;
+
+function startMeditation(){
+  medRunning=true; medRemaining=MED_TOTAL; medElapsed=0; medStartTs=null;
+  medScreen.classList.add('show');
+  medInterval=setInterval(medTick,1000);
+  medRAF=requestAnimationFrame(medAnimFrame);
+}
+
+function stopMeditation(){
+  medRunning=false;
+  clearInterval(medInterval); medInterval=null;
+  if(medRAF){ cancelAnimationFrame(medRAF); medRAF=null; }
+}
+
+function skipMeditation(){
+  medScreen.classList.remove('show');
+  stopMeditation();
+}
+
+function medTick(){
+  if(medRemaining<=0){ endMeditation(); return; }
+  medRemaining--;
+  medCountNum.textContent=medRemaining;
+  medRingProg.style.strokeDashoffset = MED_RING_TOTAL*(medRemaining/MED_TOTAL);
+  if(medRemaining<=0) endMeditation();
+}
+
+function endMeditation(){
+  stopMeditation();
+  // Gentle fade out
+  medScreen.style.transition='opacity 2s ease';
+  medScreen.classList.remove('show');
+  setTimeout(()=>{ medScreen.style.transition=''; }, 2100);
+}
+
+function medAnimFrame(ts){
+  if(!medRunning){ return; }
+  if(!medStartTs) medStartTs=ts;
+  medElapsed=(ts-medStartTs)/1000; // seconds elapsed in animation
+
+  // Which breath phase are we in?
+  const cyclePos = medElapsed % BREATH_CYCLE;
+  let acc=0, phaseIdx=0, phaseT=0;
+  for(let i=0;i<BREATH_PHASES.length;i++){
+    if(cyclePos < acc+BREATH_PHASES[i].dur){
+      phaseIdx=i; phaseT=(cyclePos-acc)/BREATH_PHASES[i].dur; break;
+    }
+    acc+=BREATH_PHASES[i].dur;
+  }
+  const phase=BREATH_PHASES[phaseIdx];
+
+  // Update label (only when phase changes)
+  if(breathLabel.textContent!==phase.label){
+    breathLabel.style.opacity='0';
+    setTimeout(()=>{
+      breathLabel.textContent=phase.label;
+      breathLabel.style.opacity='1';
+    },350);
+  }
+
+  // Orb scale: inhale → grow, hold → stay, exhale → shrink
+  let scale=1;
+  if(phase.dir==='in')   scale=0.7+phaseT*0.6;        // 0.7→1.3
+  if(phase.dir==='out')  scale=1.3-phaseT*0.6;         // 1.3→0.7
+  if(phase.dir==='hold') scale=1.3; // hold after inhale
+
+  breathOrb.style.transform=`scale(${scale})`;
+  const glow=40+scale*50;
+  breathOrb.style.boxShadow=`0 0 ${glow}px rgba(168,201,160,${0.3+scale*0.25}), 0 0 ${glow*2}px rgba(90,125,74,${0.12+scale*0.1})`;
+
+  // Arc progress: tracks full breath cycle position
+  const arcFill = (cyclePos/BREATH_CYCLE);
+  breathArc.style.strokeDashoffset = BREATH_ARC_TOTAL*(1-arcFill);
+
+  medRAF=requestAnimationFrame(medAnimFrame);
+}
+</script>
+</body>
+</html>
